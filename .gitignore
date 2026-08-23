@@ -1,0 +1,49 @@
+# Dependency folders and package-manager caches
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+
+# Runtime, tool and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+tmp/
+temp/
+.cache/
+coverage/
+dist/
+build/
+
+# Local editor and operating-system state
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local audio supplied for playback or testing
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.aac
+*.ogg
+
+# Credentials, secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*secret*
+*token*
+*credential*
+*password*
+credentials/
+secrets/

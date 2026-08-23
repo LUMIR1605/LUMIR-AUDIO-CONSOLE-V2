@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>LUMÍR Audio Console V2</title>
+    <link rel="stylesheet" href="./src/ui/foundation.css" />
+    <link rel="stylesheet" href="./src/ui/playlist.css" />
+  </head>
+  <body>
+    <main class="console-shell" aria-label="LUMÍR Audio Console V2 static physical hardware shell">
+      <img class="console-shell__hardware" src="./assets/lumir-v2-hardware-shell.png" alt="Czarno-złota fizyczna konsola LUMÍR V2 z głośnikami, centralnym modułem i mikserem" />
+      <canvas id="center-surface" aria-label="Modularny, reaktywny Canvas CENTER"></canvas>
+      <canvas id="audio-reactive-surface" aria-hidden="true"></canvas>
+      <canvas id="hardware-feedback-surface" aria-hidden="true"></canvas>
+      <div id="hardware-input-surface" aria-hidden="true"></div>
+      <canvas id="lighting-surface" aria-hidden="true"></canvas>
+      <canvas id="component-map-debug" hidden aria-label="DEBUG COMPONENT MAP"></canvas>
+      <canvas id="target-proof-surface" hidden aria-label="Target proof diagnostic"></canvas>
+      <section id="component-map-debug-panel" class="component-map-debug-panel" hidden aria-label="Debug component map">
+        <strong>DEBUG COMPONENT MAP</strong><span>Native 1672 × 941 · M to toggle</span>
+      </section>
+      <section id="target-proof-panel" class="target-proof-panel" hidden aria-label="Target proof diagnostic"><strong id="target-proof-readout">TARGET PROOF: OFF</strong><span>700 ms ON · 250 ms GAP · NO AUDIO</span></section>
+      <nav class="control-strip" aria-label="Statyczny transport konsoli">
+        <button id="load-button" type="button">LOAD</button><button id="prev-button" type="button">PREV</button><button id="play-button" class="control-strip__play" type="button">PLAY</button><button id="next-button" type="button">NEXT</button><button id="repeat-button" type="button">REPEAT: OFF</button><button id="shuffle-button" type="button">SHUFFLE</button>
+        <span id="track-readout" class="control-strip__readout">NO TRACK LOADED · 00:00 / 00:00</span>
+        <button id="playlist-button" type="button" aria-expanded="false">PLAYLIST</button><button id="center-button" type="button" aria-expanded="false" aria-controls="center-panel">CENTER</button><button id="lights-button" type="button" aria-expanded="false" aria-controls="lighting-panel">LIGHTS</button><button id="settings-button" type="button" aria-expanded="false" aria-controls="settings-panel">SETTINGS</button><button id="fullscreen-button" type="button">FULLSCREEN</button>
+      </nav>
+      <input id="track-picker" type="file" accept="audio/wav,audio/mpeg,.wav,.mp3" multiple hidden />
+      <audio id="audio-player" preload="metadata"></audio>
+      <aside id="center-panel" class="center-panel" aria-label="CENTER renderer selection" hidden>
+        <header><strong>CENTER CORE</strong><button id="center-close" type="button" aria-label="Close CENTER selector">×</button></header>
+        <div class="center-panel__modes" role="group" aria-label="CENTER mode">
+          <button type="button" data-center-mode="subwoofer">SUBWOOFER</button><button type="button" data-center-mode="cosmic-portal">COSMIC PORTAL</button>
+          <section class="center-panel__experimental" hidden aria-label="Experimental CENTER modes">
+            <button type="button" data-center-mode="galaxy">GALAXY</button><button type="button" data-center-mode="black-hole">BLACK HOLE</button><button type="button" data-center-mode="ai-core">AI CORE</button><button type="button" data-center-mode="plasma">PLASMA</button><button type="button" data-center-mode="particle-core">PARTICLE CORE</button>
+          </section>
+        </div>
+        <section class="center-panel__settings" aria-label="Cosmic Portal settings">
+          <strong>PORTAL SETTINGS</strong>
+          <label><span>DEPTH</span><input id="center-depth" type="range" min="0" max="1" step="0.01" /><output id="center-depth-value"></output></label>
+          <label><span>BASS REACTION</span><input id="center-bass-reaction" type="range" min="0" max="1" step="0.01" /><output id="center-bass-reaction-value"></output></label>
+          <label><span>PARTICLE AMOUNT</span><input id="center-particle-amount" type="range" min="0" max="1" step="0.01" /><output id="center-particle-amount-value"></output></label>
+          <label><span>GLOW</span><input id="center-glow" type="range" min="0" max="1" step="0.01" /><output id="center-glow-value"></output></label>
+          <label><span>ROTATION</span><input id="center-rotation" type="range" min="0" max="1" step="0.01" /><output id="center-rotation-value"></output></label>
+          <label><span>NEBULA INTENSITY</span><input id="center-nebula-intensity" type="range" min="0" max="1" step="0.01" /><output id="center-nebula-intensity-value"></output></label>
+        </section>
+      </aside>
+      <aside id="playlist-panel" class="playlist-panel" aria-label="Playlist" hidden>
+        <header><strong>PLAYLIST</strong><button id="playlist-close" type="button" aria-label="Close playlist">×</button></header>
+        <div class="playlist-actions"><button id="playlist-add" type="button">ADD FILES</button><button id="playlist-clear" type="button">CLEAR</button></div>
+        <p id="playlist-empty">DROP WAV / MP3 FILES HERE</p><ol id="playlist-items"></ol>
+      </aside>
+      <section id="lighting-panel" class="lighting-panel" aria-label="Lighting settings" hidden>
+        <header><span>LIGHTING</span><button id="lights-close" type="button" aria-label="Close lighting settings">×</button></header>
+        <label><span>SPEAKER LIGHTS</span><input id="speaker-enabled" type="checkbox" /></label>
+        <label><span>MODE</span><select id="speaker-mode"><option value="off">OFF</option><option value="static">STATIC</option><option value="slow-cycle">SLOW CYCLE</option></select></label>
+        <label><span>STATIC COLOR</span><select id="static-color"><option value="gold">GOLD</option><option value="amber">AMBER</option><option value="violet">DEEP VIOLET</option><option value="blue">COSMIC BLUE</option></select></label>
+        <label><span>CYCLE SPEED</span><input id="cycle-seconds" type="range" min="15" max="180" step="1" /><output id="cycle-value"></output></label>
+        <label><span>BRIGHTNESS</span><input id="brightness" type="range" min="20" max="100" step="1" /><output id="brightness-value"></output></label>
+        <label><span>CONSOLE ACTIVITY</span><input id="activity-enabled" type="checkbox" /></label>
+        <label><span>ACTIVITY AMOUNT</span><input id="activity-amount" type="range" min="10" max="100" step="1" /><output id="activity-value"></output></label>
+        <label><span>CENTER STANDBY</span><input id="center-standby" type="checkbox" /></label>
+        <label><span>BASS GLOW</span><input id="bass-glow" type="checkbox" /></label>
+      </section>
+      <aside id="settings-panel" class="settings-panel" aria-label="Hardware settings" hidden>
+        <header><span>SETTINGS</span><button id="settings-close" type="button" aria-label="Close settings">×</button></header>
+        <section class="settings-group"><strong>SPEAKER PHYSICS</strong>
+          <label><span>SUB FORCE</span><input id="physics-sub-force" type="range" min="0" max="1.8" step="0.01" /><output id="physics-sub-force-value"></output></label>
+          <label><span>WOOFER FORCE</span><input id="physics-woofer-force" type="range" min="0" max="1.8" step="0.01" /><output id="physics-woofer-force-value"></output></label>
+          <label><span>MID FORCE</span><input id="physics-mid-force" type="range" min="0" max="1.4" step="0.01" /><output id="physics-mid-force-value"></output></label>
+          <label><span>ATTACK</span><input id="physics-attack" type="range" min="0.35" max="2.4" step="0.01" /><output id="physics-attack-value"></output></label>
+          <label><span>RELEASE</span><input id="physics-release" type="range" min="0.35" max="2.4" step="0.01" /><output id="physics-release-value"></output></label>
+          <label><span>SPRING</span><input id="physics-spring" type="range" min="0.35" max="2.4" step="0.01" /><output id="physics-spring-value"></output></label>
+          <label><span>DAMPING</span><input id="physics-damping" type="range" min="0.35" max="2.4" step="0.01" /><output id="physics-damping-value"></output></label>
+          <label><span>MAX EXCURSION</span><input id="physics-max-excursion" type="range" min="0.35" max="2.2" step="0.01" /><output id="physics-max-excursion-value"></output></label>
+        </section>
+        <section class="settings-group"><strong>MASTER / MIX</strong>
+          <label><span>MASTER VOLUME</span><input id="mixer-master" type="range" min="0" max="1.2" step="0.01" /><output id="mixer-master-value"></output></label>
+          <label><span>LEFT CHANNEL</span><input id="mixer-left" type="range" min="0" max="1" step="0.01" /><output id="mixer-left-value"></output></label>
+          <label><span>RIGHT CHANNEL</span><input id="mixer-right" type="range" min="0" max="1" step="0.01" /><output id="mixer-right-value"></output></label>
+          <label><span>CROSSFADER</span><input id="mixer-crossfader" type="range" min="-1" max="1" step="0.01" /><output id="mixer-crossfader-value"></output></label>
+          <label><span>LOW / BASS</span><input id="mixer-low" type="range" min="-12" max="12" step="0.1" /><output id="mixer-low-value"></output></label>
+          <label><span>MID</span><input id="mixer-mid" type="range" min="-12" max="12" step="0.1" /><output id="mixer-mid-value"></output></label>
+          <label><span>HIGH</span><input id="mixer-high" type="range" min="-12" max="12" step="0.1" /><output id="mixer-high-value"></output></label>
+          <label><span>MUTE</span><input id="mixer-mute" type="checkbox" /></label>
+        </section>
+        <button id="hardware-reset" class="settings-reset" type="button">RESET TO PROFESSIONAL DEFAULT</button>
+      </aside>
+      <p id="hardware-readout" class="hardware-readout" hidden aria-live="polite"></p>
+      <p class="console-shell__core-label" hidden>MODULAR VISUAL CORE · CANVAS / WEBGL READY</p>
+    </main>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

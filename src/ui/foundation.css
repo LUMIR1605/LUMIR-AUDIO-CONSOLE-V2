@@ -1,0 +1,68 @@
+:root { background: #010101; color: #d4ae63; font-family: "Segoe UI", Arial, sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 960px; height: 100vh; overflow: hidden; display: grid; place-items: center; background: #010101; }
+.console-shell { position: relative; width: min(100vw, calc(100vh * 1.776833)); aspect-ratio: 1672 / 941; overflow: hidden; background: #000; box-shadow: 0 20px 80px #000; }
+.console-shell__hardware { display: block; width: 100%; height: 100%; object-fit: cover; user-select: none; }
+
+/* Exact native component-map bounds for CENTER_INNER_VISUAL_SURFACE: 678,111,316,320 in 1672 × 941. */
+.console-shell #center-surface { position: absolute; z-index: 2; left: 40.55%; top: 11.8%; width: 18.9%; height: 34.01%; border-radius: 50%; pointer-events: none; }
+.console-shell #audio-reactive-surface, .console-shell #lighting-surface, .console-shell #hardware-feedback-surface { position: absolute; z-index: 3; inset: 0; pointer-events: none; }
+.console-shell #hardware-input-surface { position: absolute; z-index: 3; inset: 0; pointer-events: auto; touch-action: none; }
+.console-shell #component-map-debug, .console-shell #target-proof-surface { position: absolute; z-index: 3; inset: 0; pointer-events: none; }
+
+.component-map-debug-panel, .target-proof-panel { position: absolute; z-index: 4; left: 1.2%; bottom: 1.5%; display: grid; gap: 2px; padding: 5px 7px; border: 1px solid #6cdcffaa; background: #03070bdd; color: #8ee9ff; font: 700 clamp(7px, .54vw, 10px) ui-monospace, Consolas, monospace; letter-spacing: .06em; box-shadow: 0 3px 12px #0009; }
+.component-map-debug-panel span, .target-proof-panel span { color: #d5e7bc; font-weight: 500; font-size: .86em; }
+.target-proof-panel { border-color: #f1c85fa8; color: #fff0a3; }
+.target-proof-panel span { color: #e6c36c; }
+.next-debug-panel { position: absolute; z-index: 6; top: 7.2%; left: 1.2%; width: min(25.5%, 350px); max-height: 71%; overflow: hidden auto; padding: .55% .62%; border: 1px solid #9a7640c9; background: #090806ed; color: #dbc27e; box-shadow: 0 10px 30px #000b, inset 0 1px #e5ba6333; font: 700 clamp(5px, .52vw, 8px) ui-monospace, Consolas, monospace; letter-spacing: .035em; pointer-events: none; }
+.next-debug-panel[hidden] { display: none; }
+.next-debug-panel header { display: flex; justify-content: space-between; padding-bottom: .4em; border-bottom: 1px solid #80602e77; color: #f2ce7d; }
+.next-debug-panel header span { color: #8fa68e; }
+.next-debug-panel dl { display: grid; grid-template-columns: 1fr 1fr; gap: .2em .58em; margin: .45em 0; }
+.next-debug-panel dl div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .35em; border-bottom: 1px solid #7e62231f; }
+.next-debug-panel dl .next-debug-panel__wide { grid-column: 1 / -1; }
+.next-debug-panel dt { color: #967a46; white-space: nowrap; }
+.next-debug-panel dd { min-width: 0; margin: 0; color: #f2c970; overflow-wrap: anywhere; text-align: right; }
+.next-debug-panel__log-title { display: block; padding-top: .35em; border-top: 1px solid #80602e77; color: #f0c66d; }
+.next-debug-panel ol { display: grid; gap: .15em; margin: .35em 0 0; padding: 0; list-style: none; color: #c7ae77; font-weight: 500; }
+
+.control-strip { position: absolute; z-index: 4; top: 2.2%; left: 12.7%; right: 12.7%; height: 4.1%; display: flex; align-items: center; gap: .3%; padding: 0 .4%; border: 1px solid #8a662f66; background: #090806b8; box-shadow: inset 0 1px #e2b65b28, 0 1px 7px #0008; }
+.control-strip button { height: 66%; border: 1px solid #80602e; background: #16120a; color: #c69b4d; padding: 0 .6%; font-size: clamp(5px, .58vw, 8px); font-weight: 700; letter-spacing: .04em; box-shadow: inset 0 1px #f8d27b1f; white-space: nowrap; }
+.control-strip button:active { transform: translateY(1px); filter: brightness(.75); box-shadow: inset 0 2px 4px #000c; }
+.control-strip__play { background: #4b3210 !important; color: #f4ce75 !important; border-color: #c2903f !important; box-shadow: 0 0 7px #d3973977 !important; }
+.control-strip__readout { flex: 1; min-width: 0; text-align: center; color: #bca374; font: clamp(5px, .55vw, 8px) ui-monospace, monospace; letter-spacing: .05em; white-space: nowrap; }
+.console-shell__core-label { position: absolute; z-index: 4; left: 50%; top: 49.8%; transform: translateX(-50%); margin: 0; color: #8c7342; font-size: clamp(5px, .48vw, 7px); letter-spacing: .1em; text-shadow: 0 1px 2px #000; white-space: nowrap; }
+
+.center-panel, .lighting-panel, .settings-panel { position: absolute; z-index: 5; right: 10.8%; top: 7.1%; width: min(23%, 290px); padding: .7% .8%; border: 1px solid #96723a99; background: linear-gradient(145deg, #15120eef, #050504f5); box-shadow: 0 14px 36px #000b, inset 0 1px #f5ca7030; color: #c89f57; font-size: clamp(6px, .62vw, 9px); letter-spacing: .06em; }
+.center-panel[hidden], .lighting-panel[hidden], .settings-panel[hidden] { display: none; }
+.center-panel header, .lighting-panel header, .settings-panel header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .45em; color: #f0c46b; font-weight: 700; }
+.center-panel header button, .lighting-panel header button, .settings-panel header button { border: 0; background: none; color: #c89f57; font: inherit; font-size: 1.55em; line-height: 1; cursor: pointer; }
+.center-panel__modes { display: grid; grid-template-columns: 1fr 1fr; gap: .45em; }
+.center-panel__modes button { min-height: 2.2em; border: 1px solid #80602e; background: #17120a; color: #d2aa60; font: inherit; font-size: .82em; letter-spacing: .04em; }
+.center-panel__modes button.is-selected { border-color: #e6b852; color: #ffe19a; background: #4b3210; box-shadow: 0 0 8px #d9993b66; }
+.center-panel__modes p { grid-column: 1 / -1; margin: .35em 0 0; color: #8f7441; font-size: .76em; letter-spacing: .12em; }
+.center-panel__experimental[hidden] { display: none; }
+.center-panel__settings { display: grid; gap: .28em; margin-top: .72em; padding-top: .58em; border-top: 1px solid #8d682655; }
+.center-panel__settings strong { color: #e7bd68; font-size: .76em; letter-spacing: .12em; }
+.center-panel__settings label { display: grid; grid-template-columns: 1fr 88px 32px; align-items: center; gap: .5em; min-height: 1.72em; color: #cda85e; border-top: 1px solid #6e53251f; font-size: .76em; }
+.center-panel__settings input { width: 88px; accent-color: #c7963c; }
+.center-panel__settings output { color: #f0cd7b; font-variant-numeric: tabular-nums; text-align: right; }
+
+.lighting-panel label { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: .8em; min-height: 1.8em; border-top: 1px solid #8d682625; }
+.lighting-panel input, .lighting-panel select { accent-color: #c7963c; max-width: 92px; background: #090806; color: #d8b36b; border: 1px solid #705121; font: inherit; font-size: .9em; }
+.lighting-panel output { min-width: 28px; text-align: right; color: #f2ce79; }
+.lighting-panel input[type="range"] { width: 78px; }
+.settings-panel { top: 7.1%; bottom: 2.2%; width: min(29%, 360px); overflow: auto; }
+.settings-group { display: grid; gap: .15em; margin: .6em 0; padding-top: .55em; border-top: 1px solid #8d682625; }
+.settings-group strong { color: #f0c46b; font-size: .9em; }
+.settings-group label { display: grid; grid-template-columns: 1fr auto auto; gap: .45em; align-items: center; min-height: 1.8em; }
+.settings-group input { width: 75px; accent-color: #c7963c; }
+.settings-group output { min-width: 34px; text-align: right; color: #f2ce79; }
+.settings-reset { width: 100%; border: 1px solid #8d6826; background: #2a1b08; color: #f0c66d; padding: .5em; font: inherit; font-size: .82em; letter-spacing: .04em; }
+.hardware-readout { position: absolute; z-index: 5; left: 50%; bottom: 2%; transform: translateX(-50%); margin: 0; padding: .45em .7em; border: 1px solid #c7963caa; background: #080705e8; color: #f5cf78; font: 700 clamp(7px, .6vw, 10px) ui-monospace, Consolas, monospace; letter-spacing: .08em; box-shadow: 0 4px 16px #000b; pointer-events: none; }
+
+@media (max-width: 1100px) {
+  .control-strip { left: 11%; right: 11%; }
+  .control-strip button:nth-of-type(6), .control-strip button:nth-of-type(10), .control-strip button:nth-of-type(11) { display: none; }
+  .center-panel, .lighting-panel, .settings-panel { right: 8%; width: 28%; }
+}
