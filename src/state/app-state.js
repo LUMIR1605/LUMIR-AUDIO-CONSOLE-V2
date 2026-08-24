@@ -1,5 +1,5 @@
 const key = "lumir-v2-lighting";
-const defaults = Object.freeze({ speakerEnabled:true, mode:"slow-cycle", staticColor:"gold", cycleSeconds:45, brightness:48, activityEnabled:true, activityAmount:46, centerStandby:true, bassGlow:false });
+const defaults = Object.freeze({ speakerEnabled:false, mode:"off", staticColor:"gold", cycleSeconds:45, brightness:48, activityEnabled:false, activityAmount:0, centerStandby:true, bassGlow:false });
 export function createAppState() {
   let lighting;
   try { lighting = { ...defaults, ...JSON.parse(localStorage.getItem(key) || "{}") }; } catch { lighting = { ...defaults }; }

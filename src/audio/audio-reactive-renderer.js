@@ -7,6 +7,8 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
   const context = canvas.getContext("2d", { alpha: true });
   if (!context) throw new Error("Canvas 2D is unavailable.");
   const mapper = createShellMapper(shell);
+  const hardwareImage = shell.querySelector(".console-shell__hardware");
+  if (!(hardwareImage instanceof HTMLImageElement)) throw new Error("The console hardware raster is required.");
 
   const resize = () => {
     const { renderedWidth, renderedHeight, devicePixelRatio } = mapper.metrics();
@@ -159,48 +161,54 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
   };
 
   const DIAPHRAGM_PROFILES = Object.freeze({
-    woofer: Object.freeze({ travel: .026, recess: .23, edge: .075 }),
-    lower: Object.freeze({ travel: .014, recess: .14, edge: .045 }),
-    mid: Object.freeze({ travel: .011, recess: .105, edge: .032 }),
-    tweeter: Object.freeze({ travel: 0, recess: .042, edge: .014 })
+    woofer: Object.freeze({ innerCone: .78, scale: .046, relief: .065 }),
+    lower: Object.freeze({ innerCone: .78, scale: .030, relief: .046 }),
+    mid: Object.freeze({ innerCone: .73, scale: .018, relief: .028 }),
+    tweeter: Object.freeze({ innerCone: .72, scale: .006, relief: .012 })
   });
 
-  // The canvas only shades the native, mapped diaphragm mask. It never moves or
-  // scales the raster speaker cabinet, bezel, or a global overlay circle.
+  // Only the inner cone is redrawn from the existing hardware raster. The
+  // mapped surround, bezel and cabinet stay in the underlying static image.
   const drawDiaphragm = (id, profileName) => {
     const strength = clamp(physics.getVisualExcursion(id), 0, 1.18);
-    if (strength <= .002) return;
+    if (strength <= .002 || !hardwareImage.complete || hardwareImage.naturalWidth === 0) return;
     const profile = DIAPHRAGM_PROFILES[profileName];
-    const display = path(target(id));
-    const radius = Math.min(display.radiusX, display.radiusY);
-    const displacement = strength * radius * profile.travel;
-    const depth = clamp(strength, 0, 1);
+    const component = target(id);
+    const display = mapper.rectFor(component);
+    const sourceScaleX = hardwareImage.naturalWidth / mapper.native.width;
+    const sourceScaleY = hardwareImage.naturalHeight / mapper.native.height;
+    const sourceRadiusX = component.radius * profile.innerCone * sourceScaleX;
+    const sourceRadiusY = component.radius * profile.innerCone * sourceScaleY;
+    const sourceCenterX = component.centerX * sourceScaleX;
+    const sourceCenterY = component.centerY * sourceScaleY;
+    const innerRadiusX = display.radiusX * profile.innerCone;
+    const innerRadiusY = display.radiusY * profile.innerCone;
+    const scale = 1 + strength * profile.scale;
+    const destinationWidth = innerRadiusX * 2 * scale;
+    const destinationHeight = innerRadiusY * 2 * scale;
+    const relief = profile.relief * clamp(strength, 0, 1);
 
     context.save();
+    context.beginPath();
+    context.ellipse(display.centerX, display.centerY, innerRadiusX, innerRadiusY, 0, 0, Math.PI * 2);
     context.clip();
-
-    // A small, neutral shift of the local shading gives the cone a piston-like
-    // forward/rearward excursion without colouring or outlining the driver.
-    const cone = context.createRadialGradient(
-      display.centerX, display.centerY + displacement, radius * .09,
-      display.centerX, display.centerY + displacement, radius * .88
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(
+      hardwareImage,
+      sourceCenterX - sourceRadiusX, sourceCenterY - sourceRadiusY, sourceRadiusX * 2, sourceRadiusY * 2,
+      display.centerX - destinationWidth * .5, display.centerY - destinationHeight * .5, destinationWidth, destinationHeight
     );
-    cone.addColorStop(0, `rgba(0, 0, 0, ${profile.recess * (.45 + depth * .55)})`);
-    cone.addColorStop(.42, `rgba(0, 0, 0, ${profile.recess * (.14 + depth * .28)})`);
-    cone.addColorStop(.74, "rgba(255, 255, 255, 0)");
-    cone.addColorStop(1, "rgba(0, 0, 0, 0)");
-    context.fillStyle = cone;
-    context.fillRect(display.x, display.y, display.width, display.height);
 
-    if (profile.edge > 0) {
-      const pressure = context.createLinearGradient(display.centerX, display.y, display.centerX, display.y + display.height);
-      pressure.addColorStop(0, `rgba(255, 255, 255, ${profile.edge * depth})`);
-      pressure.addColorStop(.34, "rgba(255, 255, 255, 0)");
-      pressure.addColorStop(.72, "rgba(0, 0, 0, 0)");
-      pressure.addColorStop(1, `rgba(0, 0, 0, ${profile.edge * (1 + depth)})`);
-      context.fillStyle = pressure;
-      context.fillRect(display.x, display.y, display.width, display.height);
-    }
+    // Neutral relief reinforces the raster movement without introducing any
+    // decorative colour, glow or extra speaker ring.
+    const reliefGradient = context.createLinearGradient(display.centerX, display.y, display.centerX, display.y + display.height);
+    reliefGradient.addColorStop(0, `rgba(255, 255, 255, ${relief})`);
+    reliefGradient.addColorStop(.34, "rgba(255, 255, 255, 0)");
+    reliefGradient.addColorStop(.67, "rgba(0, 0, 0, 0)");
+    reliefGradient.addColorStop(1, `rgba(0, 0, 0, ${relief * 1.45})`);
+    context.fillStyle = reliefGradient;
+    context.fillRect(display.x, display.y, display.width, display.height);
     context.restore();
   };
 
