@@ -12,7 +12,10 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
   const speakerQuery = new URLSearchParams(window.location.search);
   const speakerDebug = speakerQuery.has("debug-speaker");
   const speakerLiveProbe = !speakerDebug && speakerQuery.has("debug-speaker-live");
+  const speakerV3 = speakerQuery.get("speaker-v3") === "1";
+  const speakerV3Debug = speakerV3 && speakerQuery.get("speaker-v3-debug") === "1";
   const speakerLiveMaxima = { leftBass: 0, rightBass: 0, leftVisual: 0, rightVisual: 0 };
+  const leftV3 = speakerV3 ? { position: 0, lastTime: performance.now(), lowPass: 0, previousSample: 0 } : null;
 
   const resize = () => {
     const { renderedWidth, renderedHeight, devicePixelRatio } = mapper.metrics();
@@ -222,6 +225,157 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
     context.restore();
   };
 
+  const drawLeftWooferV3Debug = ({ signedLow, target: motionTarget, position, leftBass }) => {
+    if (!speakerV3Debug) return;
+    context.save();
+    context.fillStyle = "rgba(205, 228, 233, .96)";
+    context.font = "700 11px ui-monospace, Consolas, monospace";
+    const lines = [
+      "LEFT WOOFER V3",
+      `SIGNED LOW: ${signedLow.toFixed(3)}`,
+      `TARGET: ${motionTarget.toFixed(3)}`,
+      `POSITION: ${position.toFixed(3)}`,
+      `LEFT BASS: ${leftBass.toFixed(3)}`
+    ];
+    lines.forEach((line, index) => context.fillText(line, 12, 20 + index * 14));
+    context.restore();
+  };
+
+  // V3 intentionally derives only this driver from signed PCM motion. Its
+  // clip is entirely inside the static surround, bezel and speaker cabinet.
+  const drawLeftWooferV3 = frame => {
+    const now = performance.now();
+    const dt = clamp((now - leftV3.lastTime) / 1000, .004, .05);
+    let signedLow = 0;
+    const samples = frame.waveformLeft;
+    if (frame.active && samples?.length) {
+      let dcTotal = 0;
+      for (let index = 0; index < samples.length; index += 1) dcTotal += samples[index];
+      const dcMean = dcTotal / samples.length;
+      const rc = 1 / (2 * Math.PI * 110);
+      const sampleDt = 1 / 48000;
+      const alpha = sampleDt / (rc + sampleDt);
+      for (let index = 0; index < samples.length; index += 1) {
+        const sample = samples[index];
+        const centered = sample - dcMean;
+        leftV3.lowPass += alpha * (centered - leftV3.lowPass);
+        leftV3.previousSample = sample;
+      }
+      signedLow = leftV3.lowPass;
+    }
+    const bassGate = .25 + .75 * Math.sqrt(clamp(frame.leftBass || 0));
+    const motionTarget = frame.active ? clamp(signedLow * 9.0 * bassGate, -1, 1) : 0;
+    const follow = 1 - Math.exp(-dt * 30);
+    leftV3.position += (motionTarget - leftV3.position) * follow;
+    leftV3.position = clamp(leftV3.position, -1, 1);
+    leftV3.lastTime = now;
+
+    const component = target("LEFT_SPEAKER_WOOFER");
+    const display = mapper.rectFor(component);
+    const outerConeRatio = .74;
+    const dynamicConeRatio = .64;
+    const dustCapRatio = .27;
+    const sourceScaleX = hardwareImage.naturalWidth / mapper.native.width;
+    const sourceScaleY = hardwareImage.naturalHeight / mapper.native.height;
+    const sourceCenterX = component.centerX * sourceScaleX;
+    const sourceCenterY = component.centerY * sourceScaleY;
+    const outerRadiusX = display.radiusX * outerConeRatio;
+    const outerRadiusY = display.radiusY * outerConeRatio;
+    const dynamicRadiusX = display.radiusX * dynamicConeRatio;
+    const dynamicRadiusY = display.radiusY * dynamicConeRatio;
+    const dustRadiusX = display.radiusX * dustCapRatio;
+    const dustRadiusY = display.radiusY * dustCapRatio;
+    const dynamicScale = 1.030 + leftV3.position * .025;
+    const dustScale = 1.035 + leftV3.position * .035;
+    const depth = Math.abs(leftV3.position);
+    const clipCone = (radiusX, radiusY) => {
+      context.beginPath();
+      context.ellipse(display.centerX, display.centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+      context.clip();
+    };
+    const drawConeRaster = (ratio, scale) => {
+      const sourceRadiusX = component.radius * ratio * sourceScaleX;
+      const sourceRadiusY = component.radius * ratio * sourceScaleY;
+      const destinationRadiusX = display.radiusX * ratio * scale;
+      const destinationRadiusY = display.radiusY * ratio * scale;
+      context.drawImage(
+        hardwareImage,
+        sourceCenterX - sourceRadiusX, sourceCenterY - sourceRadiusY, sourceRadiusX * 2, sourceRadiusY * 2,
+        display.centerX - destinationRadiusX, display.centerY - destinationRadiusY, destinationRadiusX * 2, destinationRadiusY * 2
+      );
+    };
+
+    context.save();
+    if (hardwareImage.complete && hardwareImage.naturalWidth > 0) {
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      // This unmoving base covers the entire V3 cone, so inward signed motion
+      // can never reveal the original raster or an empty background strip.
+      context.save();
+      clipCone(outerRadiusX, outerRadiusY);
+      drawConeRaster(outerConeRatio, 1.025);
+      context.restore();
+
+      // Only the protected centre is allowed to breathe. Its scale is always
+      // above 1, retaining the cone texture and its circular structure.
+      context.save();
+      clipCone(dynamicRadiusX, dynamicRadiusY);
+      drawConeRaster(dynamicConeRatio, dynamicScale);
+      context.restore();
+
+      // The dust cap supplies a small, signed depth cue without translating
+      // or deforming any part of the speaker cabinet or outer surround.
+      context.save();
+      clipCone(dustRadiusX, dustRadiusY);
+      drawConeRaster(dustCapRatio, dustScale);
+      context.restore();
+    }
+
+    context.save();
+    clipCone(outerRadiusX, outerRadiusY);
+    const edgeBlend = context.createRadialGradient(
+      display.centerX, display.centerY, dynamicRadiusX * .84,
+      display.centerX, display.centerY, dynamicRadiusX
+    );
+    edgeBlend.addColorStop(0, "rgba(3, 4, 5, 0)");
+    edgeBlend.addColorStop(.82, "rgba(3, 4, 5, 0)");
+    edgeBlend.addColorStop(1, "rgba(3, 4, 5, .035)");
+    context.fillStyle = edgeBlend;
+    context.fillRect(display.x, display.y, display.width, display.height);
+
+    const relief = context.createLinearGradient(display.centerX, display.y, display.centerX, display.y + display.height);
+    if (leftV3.position >= 0) {
+      relief.addColorStop(0, `rgba(255, 255, 255, ${depth * .075})`);
+      relief.addColorStop(.42, "rgba(255, 255, 255, 0)");
+      relief.addColorStop(.60, "rgba(0, 0, 0, 0)");
+      relief.addColorStop(1, `rgba(0, 0, 0, ${depth * .12})`);
+    } else {
+      relief.addColorStop(0, `rgba(0, 0, 0, ${depth * .12})`);
+      relief.addColorStop(.42, "rgba(0, 0, 0, 0)");
+      relief.addColorStop(.60, "rgba(255, 255, 255, 0)");
+      relief.addColorStop(1, `rgba(255, 255, 255, ${depth * .075})`);
+    }
+    context.fillStyle = relief;
+    context.fillRect(display.x, display.y, display.width, display.height);
+    const centerDepth = context.createRadialGradient(
+      display.centerX, display.centerY, 0,
+      display.centerX, display.centerY, dustRadiusX * 1.8
+    );
+    const centerColor = leftV3.position >= 0 ? "255, 255, 255" : "0, 0, 0";
+    centerDepth.addColorStop(0, `rgba(${centerColor}, ${depth * .045})`);
+    centerDepth.addColorStop(1, `rgba(${centerColor}, 0)`);
+    context.fillStyle = centerDepth;
+    context.fillRect(display.x, display.y, display.width, display.height);
+    context.restore();
+
+    drawLeftWooferV3Debug({
+      signedLow,
+      target: motionTarget,
+      position: leftV3.position,
+      leftBass: clamp(frame.leftBass)
+    });
+  };
+
   // Diagnostic-only raster proof. It executes before the inactive-frame gate,
   // so no AudioFrame, playback or production physics input is required.
   const drawForcedWooferDiagnostic = (id, forced, color) => {
@@ -362,6 +516,7 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
       return;
     }
     if (!frame.active) {
+      if (speakerV3) drawLeftWooferV3(frame);
       if (speakerLiveProbe) drawSpeakerLiveProbe(frame);
       return;
     }
@@ -374,7 +529,8 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
     drawVu("MASTER_RIGHT_VU", frame.rightRms);
 
     drawCenterRing(physics.getExcursion("CENTER_OUTER_RING"), physics.getMaximum("CENTER_OUTER_RING"));
-    drawDiaphragm("LEFT_SPEAKER_WOOFER", "woofer");
+    if (speakerV3) drawLeftWooferV3(frame);
+    else drawDiaphragm("LEFT_SPEAKER_WOOFER", "woofer");
     drawDiaphragm("RIGHT_SPEAKER_WOOFER", "woofer");
     drawDiaphragm("LEFT_SPEAKER_LOWER", "lower");
     drawDiaphragm("RIGHT_SPEAKER_LOWER", "lower");
