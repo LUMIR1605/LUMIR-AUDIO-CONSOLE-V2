@@ -9,7 +9,10 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
   const mapper = createShellMapper(shell);
   const hardwareImage = shell.querySelector(".console-shell__hardware");
   if (!(hardwareImage instanceof HTMLImageElement)) throw new Error("The console hardware raster is required.");
-  const speakerDebug = new URLSearchParams(window.location.search).has("debug-speaker");
+  const speakerQuery = new URLSearchParams(window.location.search);
+  const speakerDebug = speakerQuery.has("debug-speaker");
+  const speakerLiveProbe = !speakerDebug && speakerQuery.has("debug-speaker-live");
+  const speakerLiveMaxima = { leftBass: 0, rightBass: 0, leftVisual: 0, rightVisual: 0 };
 
   const resize = () => {
     const { renderedWidth, renderedHeight, devicePixelRatio } = mapper.metrics();
@@ -269,6 +272,80 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
     context.restore();
   };
 
+  const drawSpeakerLiveProbe = frame => {
+    const leftBass = clamp(frame.leftBass || 0);
+    const rightBass = clamp(frame.rightBass || 0);
+    const sub = clamp(frame.sub || 0);
+    const kick = clamp(frame.kickEnergy || 0);
+    const leftEnvelope = clamp(physics.getEnvelope("LEFT_SPEAKER_WOOFER"));
+    const rightEnvelope = clamp(physics.getEnvelope("RIGHT_SPEAKER_WOOFER"));
+    const leftExcursion = Math.max(0, physics.getExcursion("LEFT_SPEAKER_WOOFER"));
+    const rightExcursion = Math.max(0, physics.getExcursion("RIGHT_SPEAKER_WOOFER"));
+    const leftVisual = clamp(physics.getVisualExcursion("LEFT_SPEAKER_WOOFER"));
+    const rightVisual = clamp(physics.getVisualExcursion("RIGHT_SPEAKER_WOOFER"));
+    speakerLiveMaxima.leftBass = Math.max(speakerLiveMaxima.leftBass, leftBass);
+    speakerLiveMaxima.rightBass = Math.max(speakerLiveMaxima.rightBass, rightBass);
+    speakerLiveMaxima.leftVisual = Math.max(speakerLiveMaxima.leftVisual, leftVisual);
+    speakerLiveMaxima.rightVisual = Math.max(speakerLiveMaxima.rightVisual, rightVisual);
+
+    const status = !frame.active ? "NO AUDIO FRAME"
+      : Math.max(leftBass, rightBass) < .05 ? "AUDIO INPUT TOO LOW"
+        : Math.max(leftVisual, rightVisual) < .05 ? "PHYSICS OUTPUT TOO LOW"
+          : "PHYSICS LIVE";
+    const display = mapper.rectFor(target("LEFT_TOP_SPECTRUM"));
+    const x = display.x + 6;
+    const y = Math.max(14, display.y + 13);
+    const lineHeight = Math.max(9, display.height * .078);
+    const width = Math.min(display.width - 12, 220);
+    const value = number => Number(number).toFixed(3);
+    const lines = [
+      "SPEAKER LIVE",
+      `FRAME ACTIVE: ${frame.active ? "YES" : "NO"}`,
+      `LEFT BASS: ${value(leftBass)}`,
+      `RIGHT BASS: ${value(rightBass)}`,
+      `SUB: ${value(sub)}`,
+      `KICK: ${value(kick)}`,
+      `LEFT WOOFER ENVELOPE: ${value(leftEnvelope)}`,
+      `RIGHT WOOFER ENVELOPE: ${value(rightEnvelope)}`,
+      `LEFT WOOFER EXCURSION: ${value(leftExcursion)}`,
+      `RIGHT WOOFER EXCURSION: ${value(rightExcursion)}`,
+      `LEFT VISUAL: ${value(leftVisual)}`,
+      `RIGHT VISUAL: ${value(rightVisual)}`,
+      `STATUS: ${status}`
+    ];
+    context.save();
+    context.fillStyle = "rgba(3, 7, 11, .82)";
+    context.fillRect(x - 4, y - lineHeight, width + 8, lines.length * lineHeight + lineHeight * 4.9);
+    context.fillStyle = "rgba(110, 234, 255, .98)";
+    context.font = `${Math.max(8, lineHeight * .82)}px ui-monospace, Consolas, monospace`;
+    lines.forEach((line, index) => context.fillText(line, x, y + index * lineHeight));
+
+    const bars = [["LEFT BASS", leftBass], ["RIGHT BASS", rightBass], ["LEFT VISUAL", leftVisual], ["RIGHT VISUAL", rightVisual]];
+    const barY = y + lines.length * lineHeight + lineHeight * .45;
+    const barWidth = width * .46;
+    bars.forEach(([label, amount], index) => {
+      const currentY = barY + index * lineHeight;
+      context.fillStyle = "rgba(130, 152, 162, .75)";
+      context.fillText(label, x, currentY);
+      context.fillStyle = "rgba(44, 63, 71, .85)";
+      context.fillRect(x + width * .52, currentY - lineHeight * .74, barWidth, lineHeight * .56);
+      context.fillStyle = index > 1 ? "rgba(202, 229, 241, .96)" : "rgba(56, 219, 255, .96)";
+      context.fillRect(x + width * .52, currentY - lineHeight * .74, barWidth * clamp(amount), lineHeight * .56);
+    });
+    context.restore();
+
+    canvas.dataset.speakerLive = "active";
+    canvas.dataset.speakerLiveStatus = status;
+    canvas.dataset.leftBass = value(leftBass);
+    canvas.dataset.rightBass = value(rightBass);
+    canvas.dataset.leftVisual = value(leftVisual);
+    canvas.dataset.rightVisual = value(rightVisual);
+    canvas.dataset.maxLeftBass = value(speakerLiveMaxima.leftBass);
+    canvas.dataset.maxRightBass = value(speakerLiveMaxima.rightBass);
+    canvas.dataset.maxLeftVisual = value(speakerLiveMaxima.leftVisual);
+    canvas.dataset.maxRightVisual = value(speakerLiveMaxima.rightVisual);
+  };
+
   const render = frame => {
     clear();
     if (speakerDebug) {
@@ -278,7 +355,10 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
       drawForcedWooferDiagnostic("RIGHT_SPEAKER_WOOFER", 1 - forced, "rgba(255, 52, 220, ALPHA)");
       return;
     }
-    if (!frame.active) return;
+    if (!frame.active) {
+      if (speakerLiveProbe) drawSpeakerLiveProbe(frame);
+      return;
+    }
     drawWaveform("LEFT_WAVEFORM_DISPLAY", frame.waveformLeft, frame.leftRms);
     drawWaveform("RIGHT_WAVEFORM_DISPLAY", frame.waveformRight, frame.rightRms);
     drawSpectrum(frame.fftMaster);
@@ -296,6 +376,7 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
     drawDiaphragm("RIGHT_SPEAKER_MID", "mid");
     drawDiaphragm("LEFT_SPEAKER_TWEETER", "tweeter");
     drawDiaphragm("RIGHT_SPEAKER_TWEETER", "tweeter");
+    if (speakerLiveProbe) drawSpeakerLiveProbe(frame);
   };
 
   return Object.freeze({ render, dispose: () => { observer.disconnect(); clear(); } });
