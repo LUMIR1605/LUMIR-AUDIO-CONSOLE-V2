@@ -165,18 +165,19 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
   };
 
   const DIAPHRAGM_PROFILES = Object.freeze({
-    woofer: Object.freeze({ innerCone: .78, scale: .046, relief: .065 }),
-    lower: Object.freeze({ innerCone: .78, scale: .030, relief: .046 }),
-    mid: Object.freeze({ innerCone: .73, scale: .018, relief: .028 }),
-    tweeter: Object.freeze({ innerCone: .72, scale: .006, relief: .012 })
+    woofer: Object.freeze({ innerCone: .76, scale: .095, offsetNativePx: 3.5, relief: .075 }),
+    lower: Object.freeze({ innerCone: .77, scale: .060, offsetNativePx: 2.2, relief: .050 }),
+    mid: Object.freeze({ innerCone: .72, scale: .032, offsetNativePx: 1.2, relief: .030 }),
+    tweeter: Object.freeze({ innerCone: .70, scale: .010, offsetNativePx: .35, relief: .012 })
   });
 
   // Only the inner cone is redrawn from the existing hardware raster. The
   // mapped surround, bezel and cabinet stay in the underlying static image.
   const drawDiaphragm = (id, profileName) => {
-    const strength = clamp(physics.getVisualExcursion(id), 0, 1.18);
-    if (strength <= .002 || !hardwareImage.complete || hardwareImage.naturalWidth === 0) return;
+    const rawStrength = clamp(physics.getVisualExcursion(id), 0, 1);
+    if (rawStrength <= .002 || !hardwareImage.complete || hardwareImage.naturalWidth === 0) return;
     const profile = DIAPHRAGM_PROFILES[profileName];
+    const motion = Math.pow(rawStrength, .65);
     const component = target(id);
     const display = mapper.rectFor(component);
     const sourceScaleX = hardwareImage.naturalWidth / mapper.native.width;
@@ -187,21 +188,26 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
     const sourceCenterY = component.centerY * sourceScaleY;
     const innerRadiusX = display.radiusX * profile.innerCone;
     const innerRadiusY = display.radiusY * profile.innerCone;
-    const scale = 1 + strength * profile.scale;
+    // The slightly smaller clip hides the transition between the redrawn cone
+    // and the static surround even at the maximum production excursion.
+    const clipRadiusX = innerRadiusX * .985;
+    const clipRadiusY = innerRadiusY * .985;
+    const scale = 1 + motion * profile.scale;
+    const offsetY = motion * profile.offsetNativePx * display.metrics.scaleY;
     const destinationWidth = innerRadiusX * 2 * scale;
     const destinationHeight = innerRadiusY * 2 * scale;
-    const relief = profile.relief * clamp(strength, 0, 1);
+    const relief = profile.relief * motion;
 
     context.save();
     context.beginPath();
-    context.ellipse(display.centerX, display.centerY, innerRadiusX, innerRadiusY, 0, 0, Math.PI * 2);
+    context.ellipse(display.centerX, display.centerY, clipRadiusX, clipRadiusY, 0, 0, Math.PI * 2);
     context.clip();
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
     context.drawImage(
       hardwareImage,
       sourceCenterX - sourceRadiusX, sourceCenterY - sourceRadiusY, sourceRadiusX * 2, sourceRadiusY * 2,
-      display.centerX - destinationWidth * .5, display.centerY - destinationHeight * .5, destinationWidth, destinationHeight
+      display.centerX - destinationWidth * .5, display.centerY + offsetY - destinationHeight * .5, destinationWidth, destinationHeight
     );
 
     // Neutral relief reinforces the raster movement without introducing any
