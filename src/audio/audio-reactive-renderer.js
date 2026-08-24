@@ -9,6 +9,7 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
   const mapper = createShellMapper(shell);
   const hardwareImage = shell.querySelector(".console-shell__hardware");
   if (!(hardwareImage instanceof HTMLImageElement)) throw new Error("The console hardware raster is required.");
+  const speakerDebug = new URLSearchParams(window.location.search).has("debug-speaker");
 
   const resize = () => {
     const { renderedWidth, renderedHeight, devicePixelRatio } = mapper.metrics();
@@ -212,8 +213,71 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
     context.restore();
   };
 
+  // Diagnostic-only raster proof. It executes before the inactive-frame gate,
+  // so no AudioFrame, playback or production physics input is required.
+  const drawForcedWooferDiagnostic = (id, forced, color) => {
+    const component = target(id);
+    const display = mapper.rectFor(component);
+    const coneRatio = .75;
+    const innerRadiusX = display.radiusX * coneRatio;
+    const innerRadiusY = display.radiusY * coneRatio;
+    const sourceScaleX = hardwareImage.naturalWidth / mapper.native.width;
+    const sourceScaleY = hardwareImage.naturalHeight / mapper.native.height;
+    const sourceRadiusX = component.radius * coneRatio * sourceScaleX;
+    const sourceRadiusY = component.radius * coneRatio * sourceScaleY;
+    const sourceCenterX = component.centerX * sourceScaleX;
+    const sourceCenterY = component.centerY * sourceScaleY;
+    const scale = 1 + forced * .25;
+    const offsetY = (-6 + forced * 12) * display.metrics.scaleY;
+    const width = innerRadiusX * 2 * scale;
+    const height = innerRadiusY * 2 * scale;
+
+    context.save();
+    context.beginPath();
+    context.ellipse(display.centerX, display.centerY, innerRadiusX, innerRadiusY, 0, 0, Math.PI * 2);
+    context.clip();
+    if (hardwareImage.complete && hardwareImage.naturalWidth > 0) {
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(
+        hardwareImage,
+        sourceCenterX - sourceRadiusX, sourceCenterY - sourceRadiusY, sourceRadiusX * 2, sourceRadiusY * 2,
+        display.centerX - width * .5, display.centerY + offsetY - height * .5, width, height
+      );
+    }
+    context.fillStyle = color.replace("ALPHA", ".22");
+    context.beginPath(); context.ellipse(display.centerX, display.centerY, innerRadiusX * .35, innerRadiusY * .35, 0, 0, Math.PI * 2); context.fill();
+    context.strokeStyle = color.replace("ALPHA", ".95");
+    context.lineWidth = Math.max(1.5, Math.min(innerRadiusX, innerRadiusY) * .035);
+    context.beginPath();
+    context.moveTo(display.centerX - innerRadiusX * .58, display.centerY);
+    context.lineTo(display.centerX + innerRadiusX * .58, display.centerY);
+    context.moveTo(display.centerX, display.centerY - innerRadiusY * .58);
+    context.lineTo(display.centerX, display.centerY + innerRadiusY * .58);
+    context.stroke();
+    context.restore();
+  };
+
+  const drawSpeakerDebugReadout = forced => {
+    canvas.dataset.speakerDebug = "active";
+    canvas.dataset.forced = forced.toFixed(3);
+    context.save();
+    context.fillStyle = "rgba(103, 231, 255, .98)";
+    context.font = "700 12px ui-monospace, Consolas, monospace";
+    context.fillText("SPEAKER DEBUG ACTIVE", 12, 20);
+    context.fillText(`FORCED: ${forced.toFixed(2)}`, 12, 36);
+    context.restore();
+  };
+
   const render = frame => {
     clear();
+    if (speakerDebug) {
+      const forced = (Math.sin(performance.now() / 350) + 1) * .5;
+      drawSpeakerDebugReadout(forced);
+      drawForcedWooferDiagnostic("LEFT_SPEAKER_WOOFER", forced, "rgba(0, 238, 255, ALPHA)");
+      drawForcedWooferDiagnostic("RIGHT_SPEAKER_WOOFER", 1 - forced, "rgba(255, 52, 220, ALPHA)");
+      return;
+    }
     if (!frame.active) return;
     drawWaveform("LEFT_WAVEFORM_DISPLAY", frame.waveformLeft, frame.leftRms);
     drawWaveform("RIGHT_WAVEFORM_DISPLAY", frame.waveformRight, frame.rightRms);
