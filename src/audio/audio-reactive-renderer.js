@@ -12,10 +12,32 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
   const speakerQuery = new URLSearchParams(window.location.search);
   const speakerDebug = speakerQuery.has("debug-speaker");
   const speakerLiveProbe = !speakerDebug && speakerQuery.has("debug-speaker-live");
-  const speakerV3 = speakerQuery.get("speaker-v3") === "1";
+  const speakerV5 = speakerQuery.get("speaker-v5") === "1";
+  const speakerV5Debug = speakerV5 && speakerQuery.get("speaker-v5-debug") === "1";
+  const speakerV3 = !speakerV5 && speakerQuery.get("speaker-v3") === "1";
   const speakerV3Debug = speakerV3 && speakerQuery.get("speaker-v3-debug") === "1";
   const speakerLiveMaxima = { leftBass: 0, rightBass: 0, leftVisual: 0, rightVisual: 0 };
   const leftV3 = speakerV3 ? { position: 0, lastTime: performance.now(), lowPass: 0, previousSample: 0 } : null;
+  let speakerDriver3d = null;
+  let rendererDisposed = false;
+
+  // V5 loads its optional WebGL dependency only when requested. If the module
+  // or a browser WebGL context is unavailable, the established 2D path stays
+  // in control and the player continues without a dependency on Three.js.
+  if (speakerV5) {
+    import("./speaker-driver-3d.js")
+      .then(({ createSpeakerDriver3DManager }) => {
+        if (rendererDisposed) return null;
+        const manager = createSpeakerDriver3DManager(shell, { debug: speakerV5Debug });
+        if (rendererDisposed) {
+          manager.dispose();
+          return null;
+        }
+        speakerDriver3d = manager;
+        return manager;
+      })
+      .catch(() => { speakerDriver3d = null; });
+  }
 
   const resize = () => {
     const { renderedWidth, renderedHeight, devicePixelRatio } = mapper.metrics();
@@ -515,6 +537,8 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
       drawForcedWooferDiagnostic("RIGHT_SPEAKER_WOOFER", 1 - forced, "rgba(255, 52, 220, ALPHA)");
       return;
     }
+    const v5Active = speakerV5 && speakerDriver3d !== null;
+    if (v5Active) speakerDriver3d.render(frame);
     if (!frame.active) {
       if (speakerV3) drawLeftWooferV3(frame);
       if (speakerLiveProbe) drawSpeakerLiveProbe(frame);
@@ -530,8 +554,8 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
 
     drawCenterRing(physics.getExcursion("CENTER_OUTER_RING"), physics.getMaximum("CENTER_OUTER_RING"));
     if (speakerV3) drawLeftWooferV3(frame);
-    else drawDiaphragm("LEFT_SPEAKER_WOOFER", "woofer");
-    drawDiaphragm("RIGHT_SPEAKER_WOOFER", "woofer");
+    else if (!v5Active) drawDiaphragm("LEFT_SPEAKER_WOOFER", "woofer");
+    if (!v5Active) drawDiaphragm("RIGHT_SPEAKER_WOOFER", "woofer");
     drawDiaphragm("LEFT_SPEAKER_LOWER", "lower");
     drawDiaphragm("RIGHT_SPEAKER_LOWER", "lower");
     drawDiaphragm("LEFT_SPEAKER_MID", "mid");
@@ -541,5 +565,5 @@ export function createAudioReactiveRenderer(canvas, shell, physics) {
     if (speakerLiveProbe) drawSpeakerLiveProbe(frame);
   };
 
-  return Object.freeze({ render, dispose: () => { observer.disconnect(); clear(); } });
+  return Object.freeze({ render, dispose: () => { rendererDisposed = true; speakerDriver3d?.dispose(); observer.disconnect(); clear(); } });
 }
