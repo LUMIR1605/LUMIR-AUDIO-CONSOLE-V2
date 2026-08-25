@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LUMÍR Woofer Lab</title>
+    <link rel="stylesheet" href="./woofer-lab.css" />
+  </head>
+  <body>
+    <main class="woofer-lab" aria-label="LUMÍR Woofer Lab true 3D speaker demonstration">
+      <div id="scene" aria-hidden="true"></div>
+      <header class="lab-title"><span>LUMÍR</span> WOOFER LAB <small>TRUE 3D DIAPHRAGM</small></header>
+      <div class="view-controls" aria-label="Camera view">
+        <button id="front-view" type="button">FRONT VIEW</button>
+        <button id="depth-view" class="is-active" type="button">DEPTH VIEW</button>
+      </div>
+      <button id="wireframe-toggle" class="wireframe-toggle" type="button" hidden>WIREFRAME: OFF</button>
+      <section class="motion-controls" aria-label="Woofer motion controls">
+        <label class="toggle-control"><input id="auto-motion" type="checkbox" checked /> <span>AUTO MOTION</span></label>
+        <label>EXCURSION <output id="excursion-output">0.00</output><input id="excursion" type="range" min="-1" max="1" step="0.01" value="0" /></label>
+        <label>AMPLITUDE <output id="amplitude-output">75%</output><input id="amplitude" type="range" min="0" max="1" step="0.01" value="0.75" /></label>
+        <label>SPEED <output id="speed-output">0.8 Hz</output><input id="speed" type="range" min="0.2" max="2" step="0.1" value="0.8" /></label>
+      </section>
+    </main>
+    <script type="module" src="./woofer-lab.js"></script>
+  </body>
+</html>
