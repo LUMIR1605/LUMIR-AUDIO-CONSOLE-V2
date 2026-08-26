@@ -2,113 +2,110 @@ import * as THREE from "/node_modules/three/build/three.module.js";
 import { createShellMapper } from "../mapping/component-map.js";
 
 const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
-const CONE_PROFILE = Object.freeze([
-  Object.freeze([0, .10]),
-  Object.freeze([.20, .07]),
-  Object.freeze([.28, .02]),
-  Object.freeze([.55, -.07]),
-  Object.freeze([.80, -.15]),
-  Object.freeze([1, -.19])
+
+const PROFILE_POINTS = Object.freeze([
+  Object.freeze([0.00,  0.10]),
+  Object.freeze([0.20,  0.07]),
+  Object.freeze([0.28,  0.02]),
+  Object.freeze([0.55, -0.07]),
+  Object.freeze([0.80, -0.15]),
+  Object.freeze([1.00, -0.19])
 ]);
 
-const profileZ = radius => {
-  for (let index = 1; index < CONE_PROFILE.length; index += 1) {
-    const [nextRadius, nextZ] = CONE_PROFILE[index];
-    if (radius <= nextRadius) {
-      const [previousRadius, previousZ] = CONE_PROFILE[index - 1];
-      const amount = clamp((radius - previousRadius) / (nextRadius - previousRadius));
-      const smooth = amount * amount * (3 - 2 * amount);
-      return previousZ + (nextZ - previousZ) * smooth;
+const smooth = value => value * value * (3 - 2 * value);
+
+const baseProfile = radius => {
+  for (let index = 0; index < PROFILE_POINTS.length - 1; index += 1) {
+    const [fromR, fromZ] = PROFILE_POINTS[index];
+    const [toR, toZ] = PROFILE_POINTS[index + 1];
+    if (radius <= toR) {
+      const t = smooth(clamp((radius - fromR) / Math.max(0.0001, toR - fromR)));
+      return THREE.MathUtils.lerp(fromZ, toZ, t);
     }
   }
-  return CONE_PROFILE.at(-1)[1];
+  return PROFILE_POINTS.at(-1)[1];
 };
 
-const createPaperTexture = () => {
+const createConeTexture = renderer => {
+  const size = 512;
   const textureCanvas = document.createElement("canvas");
-  textureCanvas.width = 384;
-  textureCanvas.height = 384;
+  textureCanvas.width = size;
+  textureCanvas.height = size;
   const context = textureCanvas.getContext("2d");
-  if (!context) throw new Error("Speaker paper texture canvas is unavailable.");
+  if (!context) throw new Error("Speaker cone texture canvas is unavailable.");
 
-  const center = textureCanvas.width * .5;
-  const field = context.createRadialGradient(center * .76, center * .68, 5, center, center, center);
-  field.addColorStop(0, "#777a78");
-  field.addColorStop(.38, "#4a4d4c");
-  field.addColorStop(.78, "#252827");
-  field.addColorStop(1, "#111312");
-  context.fillStyle = field;
-  context.fillRect(0, 0, textureCanvas.width, textureCanvas.height);
+  const center = size * 0.5;
+  const base = context.createRadialGradient(center, center, size * 0.04, center, center, size * 0.52);
+  base.addColorStop(0, "#292d2f");
+  base.addColorStop(0.32, "#202426");
+  base.addColorStop(0.74, "#171a1c");
+  base.addColorStop(1, "#101214");
+  context.fillStyle = base;
+  context.fillRect(0, 0, size, size);
 
-  context.save();
-  context.translate(center, center);
-  for (let radius = 24; radius < center; radius += 3.25) {
-    const alpha = .014 + (radius / center) * .026;
-    context.strokeStyle = `rgba(209, 214, 207, ${alpha})`;
-    context.lineWidth = radius % 13 < 3 ? .7 : .34;
+  for (let radius = size * 0.13; radius < size * 0.51; radius += 5.5) {
     context.beginPath();
-    context.arc(0, 0, radius, 0, Math.PI * 2);
+    context.arc(center, center, radius, 0, Math.PI * 2);
+    context.strokeStyle = `rgba(220, 224, 219, ${0.014 + (radius % 11) * 0.002})`;
+    context.lineWidth = 1;
     context.stroke();
   }
-  context.restore();
 
-  for (let index = 0; index < 2300; index += 1) {
-    const x = Math.random() * textureCanvas.width;
-    const y = Math.random() * textureCanvas.height;
-    const distance = Math.hypot(x - center, y - center) / center;
-    if (distance > 1) continue;
-    const alpha = .018 + Math.random() * .040;
-    context.fillStyle = Math.random() > .5
-      ? `rgba(218, 222, 215, ${alpha})`
-      : `rgba(0, 0, 0, ${alpha})`;
+  for (let index = 0; index < 2600; index += 1) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const tone = 105 + Math.floor(Math.random() * 42);
+    context.fillStyle = `rgba(${tone}, ${tone + 2}, ${tone + 3}, ${0.018 + Math.random() * 0.032})`;
     context.fillRect(x, y, 1, 1);
   }
 
   const texture = new THREE.CanvasTexture(textureCanvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
+  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   return texture;
 };
 
 const createConeGeometry = () => {
-  const radialRings = 64;
-  const angularSegments = 128;
-  const verticesPerRing = angularSegments + 1;
-  const vertexCount = verticesPerRing * (radialRings + 1);
-  const positions = new Float32Array(vertexCount * 3);
-  const uvs = new Float32Array(vertexCount * 2);
-  const baseZ = new Float32Array(vertexCount);
-  const motion = new Float32Array(vertexCount);
-  const indices = [];
+  const radialRings = 80;
+  const angularSegments = 160;
+  const rowWidth = angularSegments + 1;
+  const vertexCount = (radialRings + 1) * rowWidth;
 
+  const positions = new Float32Array(vertexCount * 3);
+  const basePositions = new Float32Array(vertexCount * 3);
+  const normalizedRadius = new Float32Array(vertexCount);
+  const uvs = new Float32Array(vertexCount * 2);
+
+  let vertex = 0;
   for (let ring = 0; ring <= radialRings; ring += 1) {
-    const radius = ring / radialRings;
-    const curve = profileZ(radius);
-    const motionProfile = Math.pow(Math.max(0, 1 - radius), 1.55);
-    const centerProfile = Math.exp(-radius * radius * 10);
-    const combined = motionProfile * .72 + motionProfile * centerProfile * .28;
+    const r = ring / radialRings;
     for (let segment = 0; segment <= angularSegments; segment += 1) {
       const angle = segment / angularSegments * Math.PI * 2;
-      const vertex = ring * verticesPerRing + segment;
-      positions[vertex * 3] = Math.cos(angle) * radius;
-      positions[vertex * 3 + 1] = Math.sin(angle) * radius;
-      positions[vertex * 3 + 2] = curve;
-      uvs[vertex * 2] = .5 + Math.cos(angle) * radius * .5;
-      uvs[vertex * 2 + 1] = .5 + Math.sin(angle) * radius * .5;
-      baseZ[vertex] = curve;
-      motion[vertex] = combined;
+      const x = Math.cos(angle) * r * 0.93;
+      const y = Math.sin(angle) * r * 0.93;
+      const z = baseProfile(r);
+
+      positions[vertex * 3] = x;
+      positions[vertex * 3 + 1] = y;
+      positions[vertex * 3 + 2] = z;
+
+      basePositions[vertex * 3] = x;
+      basePositions[vertex * 3 + 1] = y;
+      basePositions[vertex * 3 + 2] = z;
+
+      normalizedRadius[vertex] = r;
+      uvs[vertex * 2] = x / 1.86 + 0.5;
+      uvs[vertex * 2 + 1] = y / 1.86 + 0.5;
+      vertex += 1;
     }
   }
 
+  const indices = [];
   for (let ring = 0; ring < radialRings; ring += 1) {
     for (let segment = 0; segment < angularSegments; segment += 1) {
-      const a = ring * verticesPerRing + segment;
-      const b = a + 1;
-      const c = a + verticesPerRing;
-      const d = c + 1;
-      // Screen-space Y increases downward, so this order keeps the cone front
-      // facing the frontal orthographic camera.
-      indices.push(a, c, b, b, c, d);
+      const a = ring * rowWidth + segment;
+      const b = a + rowWidth;
+      indices.push(a, b, a + 1, a + 1, b, b + 1);
     }
   }
 
@@ -117,113 +114,229 @@ const createConeGeometry = () => {
   geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
-  geometry.userData.baseZ = baseZ;
-  geometry.userData.motion = motion;
+
+  geometry.userData.basePositions = basePositions;
+  geometry.userData.normalizedRadius = normalizedRadius;
+  geometry.userData.vertexCount = vertexCount;
+
   return geometry;
 };
 
-const createWoofer = (paperTexture, radiusRatio) => {
-  const group = new THREE.Group();
-  const coneGeometry = createConeGeometry();
-  const coneMaterial = new THREE.MeshStandardMaterial({
-    map: paperTexture,
-    color: 0x727674,
-    roughness: .83,
-    metalness: .035
-  });
-  const cone = new THREE.Mesh(coneGeometry, coneMaterial);
-  cone.renderOrder = 2;
-  group.add(cone);
+const updateCone = (geometry, excursion) => {
+  const position = geometry.attributes.position;
+  const basePositions = geometry.userData.basePositions;
+  const normalizedRadius = geometry.userData.normalizedRadius;
+  const vertexCount = geometry.userData.vertexCount;
 
-  const surroundGeometry = new THREE.TorusGeometry(1.025, .075, 12, 128);
-  const surroundMaterial = new THREE.MeshStandardMaterial({
-    color: 0x101211,
-    roughness: .98,
-    metalness: 0
-  });
-  const surround = new THREE.Mesh(surroundGeometry, surroundMaterial);
-  surround.position.z = -.18;
-  surround.renderOrder = 3;
-  group.add(surround);
+  for (let index = 0; index < vertexCount; index += 1) {
+    const r = normalizedRadius[index];
+    const motionProfile = Math.pow(Math.max(0, 1 - r), 1.55);
+    const centerProfile = Math.exp(-r * r * 10);
+    const combined = motionProfile * 0.72 + motionProfile * centerProfile * 0.28;
 
-  return { group, coneGeometry, cone, surround, radiusRatio, radius: 1 };
+    position.array[index * 3] = basePositions[index * 3];
+    position.array[index * 3 + 1] = basePositions[index * 3 + 1];
+    position.array[index * 3 + 2] = basePositions[index * 3 + 2] + excursion * 0.22 * combined;
+  }
+
+  position.needsUpdate = true;
+  geometry.computeVertexNormals();
 };
 
-const updateConeGeometry = (woofer, position) => {
-  const positions = woofer.coneGeometry.attributes.position;
-  const baseZ = woofer.coneGeometry.userData.baseZ;
-  const motion = woofer.coneGeometry.userData.motion;
-  for (let index = 0; index < baseZ.length; index += 1) {
-    positions.setZ(index, baseZ[index] + position * .13 * motion[index]);
-  }
-  positions.needsUpdate = true;
-  woofer.coneGeometry.computeVertexNormals();
-};
+class DriverView {
+  constructor(shell, mapper, componentId) {
+    this.shell = shell;
+    this.mapper = mapper;
+    this.componentId = componentId;
 
-const consumeSignedLowPass = (samples, state) => {
-  if (!samples?.length) return 0;
-  let dcTotal = 0;
-  for (let index = 0; index < samples.length; index += 1) dcTotal += samples[index];
-  const dcMean = dcTotal / samples.length;
-  const rc = 1 / (2 * Math.PI * 110);
-  const sampleDt = 1 / 48000;
-  const alpha = sampleDt / (rc + sampleDt);
-  for (let index = 0; index < samples.length; index += 1) {
-    const centered = samples[index] - dcMean;
-    state.lowPass += alpha * (centered - state.lowPass);
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      powerPreference: "high-performance"
+    });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.setClearColor(0x000000, 0);
+
+    const canvas = this.renderer.domElement;
+    canvas.className = `speaker-driver-3d-surface speaker-driver-3d-surface--${componentId.toLowerCase()}`;
+    canvas.setAttribute("aria-hidden", "true");
+    Object.assign(canvas.style, {
+      position: "absolute",
+      zIndex: "4",
+      pointerEvents: "none",
+      background: "transparent"
+    });
+    shell.append(canvas);
+
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(34, 1, 0.1, 20);
+    this.camera.position.set(0.48, 0.13, 4.85);
+    this.camera.lookAt(0, 0, -0.08);
+
+    this.scene.add(new THREE.HemisphereLight(0xd9dddd, 0x090a0b, 0.58));
+
+    const key = new THREE.DirectionalLight(0xffffff, 3.15);
+    key.position.set(-2.1, 2.6, 4.0);
+    this.scene.add(key);
+
+    const fill = new THREE.DirectionalLight(0xd3d8d8, 0.45);
+    fill.position.set(2.6, -0.6, 2.2);
+    this.scene.add(fill);
+
+    this.texture = createConeTexture(this.renderer);
+    this.geometry = createConeGeometry();
+    this.material = new THREE.MeshPhysicalMaterial({
+      map: this.texture,
+      color: 0xb8bec0,
+      metalness: 0.015,
+      roughness: 0.87,
+      clearcoat: 0.02,
+      clearcoatRoughness: 0.94,
+      side: THREE.FrontSide
+    });
+
+    this.cone = new THREE.Mesh(this.geometry, this.material);
+    this.scene.add(this.cone);
+
+    const rubberMaterial = new THREE.MeshStandardMaterial({
+      color: 0x080a0b,
+      roughness: 0.94,
+      metalness: 0
+    });
+    this.surround = new THREE.Mesh(
+      new THREE.TorusGeometry(1.01, 0.13, 28, 160),
+      rubberMaterial
+    );
+    this.surround.position.z = -0.17;
+    this.scene.add(this.surround);
+
+    const cavityMaterial = new THREE.MeshStandardMaterial({
+      color: 0x050607,
+      roughness: 1,
+      metalness: 0
+    });
+    this.cavity = new THREE.Mesh(
+      new THREE.CircleGeometry(1.22, 160),
+      cavityMaterial
+    );
+    this.cavity.position.z = -0.34;
+    this.scene.add(this.cavity);
+
+    this.resize();
   }
-  return state.lowPass;
+
+  resize() {
+    const display = this.mapper.rectFor(this.componentId);
+    const left = display.x;
+    const top = display.y;
+    const width = Math.max(1, display.width);
+    const height = Math.max(1, display.height);
+
+    Object.assign(this.renderer.domElement.style, {
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${width}px`,
+      height: `${height}px`
+    });
+
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setSize(width, height, false);
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+  }
+
+  render(excursion) {
+    updateCone(this.geometry, excursion);
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  dispose() {
+    this.geometry.dispose();
+    this.material.dispose();
+    this.texture.dispose();
+    this.surround.geometry.dispose();
+    this.surround.material.dispose();
+    this.cavity.geometry.dispose();
+    this.cavity.material.dispose();
+    this.renderer.dispose();
+    this.renderer.domElement.remove();
+  }
+}
+
+const createMotionState = phase => ({
+  envelope: 0,
+  phase,
+  position: 0
+});
+
+const updateVisualMotion = (frame, state, side, dt) => {
+  if (!frame.active) {
+    state.envelope += (0 - state.envelope) * (1 - Math.exp(-dt * 6));
+    state.position += (0 - state.position) * (1 - Math.exp(-dt * 9));
+    return state.position;
+  }
+
+  const bass = clamp(side === "left" ? frame.leftBass : frame.rightBass);
+  const rms = clamp(side === "left" ? frame.leftRms : frame.rightRms);
+  const sub = clamp(frame.sub || 0);
+  const kick = clamp(frame.kickEnergy || 0);
+
+  const drive = clamp(
+    bass * 0.50 +
+    sub * 0.24 +
+    kick * 0.18 +
+    rms * 0.08
+  );
+
+  const attack = 1 - Math.exp(-dt * 18);
+  const release = 1 - Math.exp(-dt * 5.5);
+  const envelopeFollow = drive > state.envelope ? attack : release;
+  state.envelope += (drive - state.envelope) * envelopeFollow;
+
+  // Deliberately visible mechanical rate. Raw 60–110 Hz cone motion aliases
+  // on a 60 FPS display and can look frozen/random.
+  const speedHz = 2.15 + 1.65 * sub + 1.20 * kick;
+  state.phase += dt * speedHz * Math.PI * 2;
+
+  if (frame.beat && kick > 0.35) {
+    const desired = Math.PI * 0.5;
+    let delta = desired - (state.phase % (Math.PI * 2));
+    if (delta > Math.PI) delta -= Math.PI * 2;
+    if (delta < -Math.PI) delta += Math.PI * 2;
+    state.phase += delta * 0.22;
+  }
+
+  const oscillation = Math.sin(state.phase);
+  const target = oscillation * Math.pow(clamp(state.envelope), 0.72) * 0.92;
+  const follow = 1 - Math.exp(-dt * 22);
+  state.position += (target - state.position) * follow;
+
+  return clamp(state.position, -1, 1);
 };
 
 export class SpeakerDriver3DManager {
   constructor(shell, { debug = false } = {}) {
-    if (!(shell instanceof HTMLElement)) throw new TypeError("A console shell is required for 3D speaker drivers.");
+    if (!(shell instanceof HTMLElement)) {
+      throw new TypeError("A console shell is required for 3D speaker drivers.");
+    }
+
     this.shell = shell;
     this.mapper = createShellMapper(shell);
     this.debug = debug;
     this.disposed = false;
     this.lastTime = performance.now();
-    this.leftSignal = { lowPass: 0, position: 0 };
-    this.rightSignal = { lowPass: 0, position: 0 };
 
-    this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    this.renderer.setClearColor(0x000000, 0);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.domElement.className = "speaker-driver-3d-surface";
-    this.renderer.domElement.setAttribute("aria-hidden", "true");
-    Object.assign(this.renderer.domElement.style, {
-      position: "absolute",
-      inset: "0",
-      width: "100%",
-      height: "100%",
-      zIndex: "2",
-      pointerEvents: "none",
-      background: "transparent"
-    });
-    shell.append(this.renderer.domElement);
+    this.leftMotion = createMotionState(0);
+    this.rightMotion = createMotionState(0.16);
 
-    this.scene = new THREE.Scene();
-    this.camera = new THREE.OrthographicCamera(0, 1, 0, 1, -1000, 1000);
-    this.camera.position.z = 420;
-    this.scene.add(this.camera);
+    this.leftView = new DriverView(shell, this.mapper, "LEFT_SPEAKER_WOOFER");
+    this.rightView = new DriverView(shell, this.mapper, "RIGHT_SPEAKER_WOOFER");
 
-    this.scene.add(new THREE.HemisphereLight(0xbec9cb, 0x151716, .72));
-    const key = new THREE.DirectionalLight(0xf3f1e7, 2.4);
-    key.position.set(-260, -320, 380);
-    this.scene.add(key);
-    const fill = new THREE.DirectionalLight(0x8f9aa1, .52);
-    fill.position.set(310, 160, 240);
-    this.scene.add(fill);
-
-    this.paperTexture = createPaperTexture();
-    this.leftWoofer = createWoofer(this.paperTexture, .72);
-    this.rightWoofer = createWoofer(this.paperTexture, .72);
-    this.scene.add(this.leftWoofer.group, this.rightWoofer.group);
-
-    if (debug) this.createDebugReadout();
-    this.resize();
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(shell);
+
+    if (debug) this.createDebugReadout();
   }
 
   createDebugReadout() {
@@ -233,14 +346,13 @@ export class SpeakerDriver3DManager {
       position: "absolute",
       left: "8px",
       top: "8px",
-      zIndex: "4",
-      padding: "4px 6px",
+      zIndex: "6",
+      padding: "5px 7px",
       border: "1px solid rgba(150, 188, 192, .7)",
-      background: "rgba(4, 9, 10, .82)",
+      background: "rgba(4, 9, 10, .86)",
       color: "#c5e4e6",
       font: "700 10px ui-monospace, Consolas, monospace",
-      lineHeight: "1.35",
-      letterSpacing: ".04em",
+      lineHeight: "1.4",
       pointerEvents: "none",
       whiteSpace: "pre"
     });
@@ -249,48 +361,31 @@ export class SpeakerDriver3DManager {
 
   resize() {
     if (this.disposed) return;
-    const { renderedWidth, renderedHeight } = this.mapper.metrics();
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.setSize(Math.max(1, renderedWidth), Math.max(1, renderedHeight), false);
-    this.camera.left = 0;
-    this.camera.right = renderedWidth;
-    this.camera.top = 0;
-    this.camera.bottom = renderedHeight;
-    this.camera.updateProjectionMatrix();
-    this.placeWoofer(this.leftWoofer, "LEFT_SPEAKER_WOOFER");
-    this.placeWoofer(this.rightWoofer, "RIGHT_SPEAKER_WOOFER");
-  }
-
-  placeWoofer(woofer, id) {
-    const display = this.mapper.rectFor(id);
-    const radiusX = display.radiusX * woofer.radiusRatio;
-    const radiusY = display.radiusY * woofer.radiusRatio;
-    woofer.radius = Math.min(radiusX, radiusY);
-    woofer.group.position.set(display.centerX, display.centerY, 0);
-    woofer.group.scale.set(radiusX, radiusY, woofer.radius);
-  }
-
-  updateSignal(frame, state, waveform, bass, dt) {
-    const signedLow = frame.active ? consumeSignedLowPass(waveform, state) : 0;
-    const bassGate = .25 + .75 * Math.sqrt(clamp(bass || 0));
-    const target = frame.active ? clamp(signedLow * 9 * bassGate, -1, 1) : 0;
-    const follow = 1 - Math.exp(-dt * 30);
-    state.position = clamp(state.position + (target - state.position) * follow, -1, 1);
-    return state.position;
+    this.leftView.resize();
+    this.rightView.resize();
   }
 
   render(frame) {
     if (this.disposed) return;
+
     const now = performance.now();
-    const dt = clamp((now - this.lastTime) / 1000, .004, .05);
+    const dt = clamp((now - this.lastTime) / 1000, 0.004, 0.05);
     this.lastTime = now;
-    const leftPosition = this.updateSignal(frame, this.leftSignal, frame.waveformLeft, frame.leftBass, dt);
-    const rightPosition = this.updateSignal(frame, this.rightSignal, frame.waveformRight, frame.rightBass, dt);
-    updateConeGeometry(this.leftWoofer, leftPosition);
-    updateConeGeometry(this.rightWoofer, rightPosition);
-    this.renderer.render(this.scene, this.camera);
+
+    const leftPosition = updateVisualMotion(frame, this.leftMotion, "left", dt);
+    const rightPosition = updateVisualMotion(frame, this.rightMotion, "right", dt);
+
+    this.leftView.render(leftPosition);
+    this.rightView.render(rightPosition);
+
     if (this.readout) {
-      this.readout.textContent = `V5 TRUE 3D\nLEFT POSITION: ${leftPosition.toFixed(3)}\nRIGHT POSITION: ${rightPosition.toFixed(3)}\nWEBGL: YES`;
+      this.readout.textContent =
+        `V5 LUMÍR FIX\n` +
+        `LEFT: ${leftPosition.toFixed(3)}\n` +
+        `RIGHT: ${rightPosition.toFixed(3)}\n` +
+        `LEFT ENV: ${this.leftMotion.envelope.toFixed(3)}\n` +
+        `RIGHT ENV: ${this.rightMotion.envelope.toFixed(3)}\n` +
+        `PERSPECTIVE: YES`;
     }
   }
 
@@ -298,17 +393,11 @@ export class SpeakerDriver3DManager {
     if (this.disposed) return;
     this.disposed = true;
     this.resizeObserver?.disconnect();
-    [this.leftWoofer, this.rightWoofer].forEach(woofer => {
-      woofer.coneGeometry.dispose();
-      woofer.cone.material.dispose();
-      woofer.surround.geometry.dispose();
-      woofer.surround.material.dispose();
-    });
-    this.paperTexture.dispose();
-    this.renderer.dispose();
-    this.renderer.domElement.remove();
+    this.leftView.dispose();
+    this.rightView.dispose();
     this.readout?.remove();
   }
 }
 
-export const createSpeakerDriver3DManager = (shell, options) => new SpeakerDriver3DManager(shell, options);
+export const createSpeakerDriver3DManager = (shell, options) =>
+  new SpeakerDriver3DManager(shell, options);
