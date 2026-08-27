@@ -45,7 +45,7 @@
       <nav class="control-strip" aria-label="Statyczny transport konsoli">
         <button id="load-button" type="button">LOAD</button><button id="prev-button" type="button">PREV</button><button id="play-button" class="control-strip__play" type="button">PLAY</button><button id="next-button" type="button">NEXT</button><button id="repeat-button" type="button">REPEAT: OFF</button><button id="shuffle-button" type="button">SHUFFLE</button>
         <span id="track-readout" class="control-strip__readout">NO TRACK LOADED · 00:00 / 00:00</span>
-        <button id="playlist-button" type="button" aria-expanded="false">PLAYLIST</button><button id="center-button" type="button" aria-expanded="false" aria-controls="center-panel">CENTER</button><button id="lights-button" type="button" aria-expanded="false" aria-controls="lighting-panel">LIGHTS</button><button id="settings-button" type="button" aria-expanded="false" aria-controls="settings-panel">SETTINGS</button><button id="fullscreen-button" type="button">FULLSCREEN</button>
+        <button id="playlist-button" type="button" aria-expanded="false">PLAYLIST</button><button id="center-button" type="button" aria-expanded="false" aria-controls="center-panel">CENTER</button><button id="lights-button" type="button" aria-expanded="false" aria-controls="lighting-panel">LIGHTS</button><button id="tts-button" type="button" aria-expanded="false" aria-controls="tts-panel">VOICE</button><button id="settings-button" type="button" aria-expanded="false" aria-controls="settings-panel">SETTINGS</button><button id="fullscreen-button" type="button">FULLSCREEN</button>
       </nav>
       <input id="track-picker" type="file" accept="audio/wav,audio/mpeg,.wav,.mp3" multiple hidden />
       <audio id="audio-player" preload="metadata"></audio>
@@ -84,6 +84,18 @@
         <label><span>CENTER STANDBY</span><input id="center-standby" type="checkbox" /></label>
         <label><span>BASS GLOW</span><input id="bass-glow" type="checkbox" /></label>
       </section>
+      <aside id="tts-panel" class="tts-panel" aria-label="Local voice generator" hidden>
+        <header><span>LOCAL VOICE</span><button id="tts-close" type="button" aria-label="Close local voice generator">×</button></header>
+        <p class="tts-panel__intro">POLSKI TTS · XTTS-v2 · GPU LOCAL</p>
+        <label class="tts-panel__field"><span>TEXT</span><textarea id="tts-text" maxlength="1200" rows="5" placeholder="Wpisz tekst do wygenerowania po polsku."></textarea><output id="tts-text-count">0 / 1200</output></label>
+        <label class="tts-panel__field"><span>VOICE SAMPLE</span><input id="tts-voice" type="file" accept="audio/wav,audio/mpeg,.wav,.mp3" /><small>WAV / MP3 · czysty głos, najlepiej 6–30 s</small></label>
+        <label class="tts-panel__field"><span>OUTPUT</span><select id="tts-format"><option value="wav">WAV · 24 kHz</option><option value="mp3">MP3 · 192 kbps</option></select></label>
+        <label class="tts-panel__legal"><input id="tts-cpml-accept" type="checkbox" /><span>Akceptuję warunki XTTS-v2 CPML wyłącznie do użycia niekomercyjnego.</span></label>
+        <p class="tts-panel__privacy">Próbka głosu i wynik pozostają lokalnie na tym komputerze. Model pobiera się jednorazowo dopiero po akceptacji.</p>
+        <div class="tts-panel__actions"><button id="tts-generate" type="button">GENERATE</button><button id="tts-play" type="button" disabled>PLAY</button><a id="tts-save" hidden>DOWNLOAD</a></div>
+        <p id="tts-status" class="tts-panel__status" role="status" aria-live="polite">SERVICE: CHECKING…</p>
+        <audio id="tts-preview" preload="metadata"></audio>
+      </aside>
       <aside id="settings-panel" class="settings-panel" aria-label="Hardware settings" hidden>
         <header><span>SETTINGS</span><button id="settings-close" type="button" aria-label="Close settings">×</button></header>
         <section class="settings-group"><strong>SPEAKER PHYSICS</strong>

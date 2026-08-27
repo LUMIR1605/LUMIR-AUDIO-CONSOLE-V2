@@ -47,3 +47,11 @@ Thumbs.db
 *password*
 credentials/
 secrets/
+
+# Local-only XTTS runtime, model cache, reference voices and generated speech
+local-tts/.runtime/
+local-tts/.venv/
+local-tts/model-cache/
+local-tts/references/
+local-tts/outputs/
+local-tts/__pycache__/

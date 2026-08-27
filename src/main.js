@@ -30,6 +30,8 @@ const lightingPanel = $("#lighting-panel");
 const lightingButton = $("#lights-button");
 const settingsPanel = $("#settings-panel");
 const settingsButton = $("#settings-button");
+const ttsPanel = $("#tts-panel");
+const ttsButton = $("#tts-button");
 const playlistPanel = $("#playlist-panel");
 const picker = $("#track-picker");
 const debugPanel = $("#component-map-debug-panel");
@@ -44,6 +46,102 @@ const PORTAL_STORAGE_KEY = "lumir-v2-cosmic-portal";
 let nextDebug = null;
 const time = value => Number.isFinite(value) ? `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, "0")}` : "--:--";
 const clamp = value => Math.min(1, Math.max(0, value));
+
+// TTS preview is deliberately isolated from the console's only music player,
+// AudioContext and reactive chain. It plays a local response from the loopback
+// service only after the user asks for a preview.
+const TTS_SERVICE_URL = "http://127.0.0.1:8788";
+const ttsPreview = $("#tts-preview");
+const ttsText = $("#tts-text");
+const ttsVoice = $("#tts-voice");
+const ttsFormat = $("#tts-format");
+const ttsTerms = $("#tts-cpml-accept");
+const ttsStatus = $("#tts-status");
+const ttsGenerate = $("#tts-generate");
+const ttsPlay = $("#tts-play");
+const ttsSave = $("#tts-save");
+let ttsPreviewUrl = null;
+const setTtsStatus = (message, state = "") => { ttsStatus.textContent = message; ttsStatus.dataset.state = state; };
+const releaseTtsPreview = () => {
+  ttsPreview.pause();
+  ttsPreview.removeAttribute("src");
+  ttsPreview.load();
+  if (ttsPreviewUrl) URL.revokeObjectURL(ttsPreviewUrl);
+  ttsPreviewUrl = null;
+  ttsPlay.disabled = true;
+  ttsPlay.textContent = "PLAY";
+  ttsSave.hidden = true;
+  ttsSave.removeAttribute("href");
+};
+const checkTtsService = async () => {
+  setTtsStatus("SERVICE: CHECKING…");
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 1800);
+  try {
+    const response = await fetch(`${TTS_SERVICE_URL}/health`, { cache: "no-store", signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const health = await response.json();
+    const cuda = health.cuda_available ? `GPU READY · ${health.device}` : "GPU UNAVAILABLE";
+    setTtsStatus(`SERVICE: READY · ${cuda}${health.model_cached ? " · MODEL CACHED" : " · MODEL NOT DOWNLOADED"}`, health.cuda_available ? "ready" : "error");
+  } catch {
+    setTtsStatus("SERVICE: OFFLINE · start local-tts/start-local-tts.ps1", "error");
+  } finally {
+    window.clearTimeout(timer);
+  }
+};
+ttsButton.addEventListener("click", () => {
+  ttsPanel.hidden = !ttsPanel.hidden;
+  ttsButton.setAttribute("aria-expanded", String(!ttsPanel.hidden));
+  if (!ttsPanel.hidden) checkTtsService();
+});
+$("#tts-close").addEventListener("click", () => { ttsPanel.hidden = true; ttsButton.setAttribute("aria-expanded", "false"); });
+ttsText.addEventListener("input", () => { $("#tts-text-count").value = `${ttsText.value.length} / 1200`; });
+ttsPlay.addEventListener("click", async () => {
+  if (!ttsPreview.src) return;
+  try {
+    if (ttsPreview.paused) await ttsPreview.play(); else ttsPreview.pause();
+  } catch { setTtsStatus("PREVIEW: BROWSER BLOCKED PLAYBACK", "error"); }
+});
+ttsPreview.addEventListener("play", () => { ttsPlay.textContent = "PAUSE"; });
+ttsPreview.addEventListener("pause", () => { ttsPlay.textContent = "PLAY"; });
+ttsPreview.addEventListener("ended", () => { ttsPlay.textContent = "PLAY"; });
+ttsGenerate.addEventListener("click", async () => {
+  const text = ttsText.value.trim();
+  const voice = ttsVoice.files?.[0];
+  if (!text) return setTtsStatus("GENERATE: ENTER POLISH TEXT", "error");
+  if (!voice) return setTtsStatus("GENERATE: ADD YOUR WAV OR MP3 VOICE SAMPLE", "error");
+  if (!ttsTerms.checked) return setTtsStatus("GENERATE: CONFIRM XTTS-v2 NON-COMMERCIAL CPML TERMS", "error");
+  ttsGenerate.disabled = true;
+  setTtsStatus("GENERATE: LOCAL GPU SYNTHESIS… first run downloads the model once");
+  const form = new FormData();
+  form.append("text", text);
+  form.append("voice", voice, voice.name);
+  form.append("output_format", ttsFormat.value);
+  form.append("accept_cpml_terms", "true");
+  try {
+    const response = await fetch(`${TTS_SERVICE_URL}/api/tts`, { method: "POST", body: form });
+    if (!response.ok) {
+      let message = `HTTP ${response.status}`;
+      try { message = (await response.json()).detail || message; } catch {}
+      throw new Error(message);
+    }
+    const blob = await response.blob();
+    releaseTtsPreview();
+    ttsPreviewUrl = URL.createObjectURL(blob);
+    ttsPreview.src = ttsPreviewUrl;
+    ttsPreview.load();
+    ttsPlay.disabled = false;
+    ttsSave.href = ttsPreviewUrl;
+    ttsSave.download = `lumir-voice.${ttsFormat.value}`;
+    ttsSave.hidden = false;
+    setTtsStatus(`GENERATE: READY · ${(blob.size / 1024).toFixed(0)} KB · ${ttsFormat.value.toUpperCase()}`, "ready");
+  } catch (error) {
+    setTtsStatus(`GENERATE: ${error.message || "LOCAL SERVICE ERROR"}`, "error");
+  } finally {
+    ttsGenerate.disabled = false;
+  }
+});
+window.addEventListener("beforeunload", releaseTtsPreview, { once: true });
 
 const lightingFields = {
   speakerEnabled: "speaker-enabled", mode: "speaker-mode", staticColor: "static-color", cycleSeconds: "cycle-seconds",
